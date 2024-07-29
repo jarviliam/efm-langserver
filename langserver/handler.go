@@ -92,6 +92,7 @@ type Language struct {
 	HoverChars         string            `yaml:"hover-chars" json:"hoverChars"`
 	Env                []string          `yaml:"env" json:"env"`
 	RootMarkers        []string          `yaml:"root-markers" json:"rootMarkers"`
+	ParentMarkers      []string          `yaml:"parent-markers" json:"parentMarkers"`
 	RequireMarker      bool              `yaml:"require-marker" json:"requireMarker"`
 	Commands           []Command         `yaml:"commands" json:"commands"`
 }
@@ -356,6 +357,26 @@ func isFilename(s string) bool {
 	}
 }
 
+func isContainedInParentMarkers(fname string, parentMarkers []string) bool {
+	d := filepath.Dir(filepath.Clean(fname))
+
+	for {
+		for _, marker := range parentMarkers {
+			if filepath.Base(d) == marker {
+				return true
+			}
+		}
+
+		parent := filepath.Dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+
+	return false
+}
+
 func (h *langHandler) lint(ctx context.Context, uri DocumentURI, eventType eventType) (map[DocumentURI][]Diagnostic, error) {
 	f, ok := h.files[uri]
 	if !ok {
@@ -372,7 +393,10 @@ func (h *langHandler) lint(ctx context.Context, uri DocumentURI, eventType event
 	if cfgs, ok := h.configs[f.LanguageID]; ok {
 		for _, cfg := range cfgs {
 			// if we require markers and find that they dont exist we do not add the configuration
-			if dir := matchRootPath(fname, cfg.RootMarkers); dir == "" && cfg.RequireMarker == true {
+			if dir := matchRootPath(fname, cfg.RootMarkers); dir == "" && cfg.RequireMarker {
+				continue
+			}
+			if len(cfg.ParentMarkers) != 0 && !isContainedInParentMarkers(fname, cfg.ParentMarkers) {
 				continue
 			}
 			switch eventType {
